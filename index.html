@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quy Hoạch Khu C - Thảo Nguyễn Vinhomes</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { width: 100%; height: 100vh; background: #000; }
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        .control-panel { background: white; padding: 10px; border: 2px solid #ccc; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .icon-btn { background: white; width: 42px; height: 42px; line-height: 42px; margin-bottom: 8px; border-radius: 8px; border: 2px solid rgba(0,0,0,0.2); cursor: pointer; text-align: center; font-size: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; text-decoration: none; position: relative; }
+        .btn-full { color: #2e7d32; } .btn-back { color: #d32f2f; font-weight: bold; } .btn-contact { color: #0084ff; }
+        .gps-container { position: absolute; top: 80px; right: 10px; z-index: 1000; }
+        .btn-gps { flex-direction: column; line-height: normal; height: auto; padding: 5px 0; min-width: 42px; }
+        .gps-status { font-size: 9px; font-weight: bold; margin-top: 2px; text-transform: uppercase; }
+        .status-off { color: #999; } .status-on { color: #007bff; }
+        .map-logo { position: absolute; bottom: 60px; left: 15px; z-index: 1000; }
+        .map-logo img { width: 120px; height: auto; filter: drop-shadow(0 0 5px white); }
+        .seo-footer { position: absolute; bottom: 8px; left: 8px; z-index: 1001; background: rgba(255, 255, 255, 0.9); padding: 5px 10px; border-radius: 4px; font-size: 10px; color: #333; border: 1px solid #ddd; }
+        .seo-footer a { color: #0068ff; text-decoration: none; font-weight: bold; }
+        .gps-dot { width: 12px; height: 12px; background: #007bff; border: 2px solid white; border-radius: 50%; position: relative; }
+        .gps-dot::after { content: ''; width: 100%; height: 100%; border-radius: 50%; background: #007bff; position: absolute; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div style="position: absolute; top: 10px; left: 10px; z-index: 1000;">
+        <div class="icon-btn btn-full" title="Mở rộng" onclick="window.open(window.location.href, '_blank')">⛶</div>
+        <div class="icon-btn btn-back" title="Quay lại" onclick="window.location.href='https://lienkevinhomes.olympichanoi.com';">➦</div>
+        <a href="https://zalo.me/0971734339" target="_blank" class="icon-btn btn-contact">💬</a>
+    </div>
+    <div class="gps-container">
+        <div class="icon-btn btn-gps" id="gps-button" title="Vị trí của tôi" onclick="toggleGPS()">
+            <span>📍</span><span id="gps-text" class="gps-status status-off">OFF</span>
+        </div>
+    </div>
+    <div class="map-logo"><a href="https://zalo.me/0971734339" target="_blank"><img src="logo.png"></a></div>
+    
+    <div class="seo-footer">Quy hoạch Khu C - <b>Thảo Nguyễn Vinhomes</b>. Website: <a href="https://lienkevinhomes.olympichanoi.com" target="_blank" rel="opener">vinhomes olympic hà nội</a></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 1. Khởi tạo bản đồ Khu C
+        var map = L.map('map', { zoomControl: false, tap: false }).setView([20.895, 105.875], 14);
+        L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { maxZoom: 22 }).addTo(map);
+        
+        // 2. Dữ liệu Khu C từ Repository database-map
+        var khuC = L.tileLayer('https://raw.githubusercontent.com/lienkevinhomesolympichanoi-star/database-map/main/database%20khu%20c/{z}/{x}/{y}.png', { 
+            maxZoom: 18, opacity: 0.7 
+        }).addTo(map);
+
+        // 3. Thanh Độ mờ Khu C (Đã Fix lỗi kéo làm di chuyển map)
+        var opacityCtrl = L.control({position: 'topright'});
+        opacityCtrl.onAdd = function (map) {
+            var div = L.DomUtil.create('div', 'control-panel');
+            div.innerHTML = '<b>Độ mờ Khu C</b><br><input id="range" type="range" min="0" max="1" step="0.1" value="0.7" style="width:100px; cursor:pointer; touch-action: none;">';
+            
+            // Cách ly sự kiện để không ảnh hưởng đến map bên dưới
+            L.DomEvent.disableClickPropagation(div);
+            L.DomEvent.disableScrollPropagation(div);
+            L.DomEvent.on(div, 'touchstart mousedown wheel dblclick', function(e) {
+                L.DomEvent.stopPropagation(e);
+            });
+            
+            return div;
+        };
+        opacityCtrl.addTo(map);
+        document.getElementById("range").addEventListener("input", function(e) { khuC.setOpacity(e.target.value); });
+
+        // 4. GPS
+        var markerGPS, isGPSActive = false, gpsText = document.getElementById('gps-text');
+        function toggleGPS() {
+            if (!isGPSActive) { map.locate({setView: true, maxZoom: 16}); isGPSActive = true; gpsText.innerText = "ON"; gpsText.className = "gps-status status-on"; }
+            else { if (markerGPS) map.removeLayer(markerGPS); isGPSActive = false; gpsText.innerText = "OFF"; gpsText.className = "gps-status status-off"; map.stopLocate(); }
+        }
+        map.on('locationfound', function(e) {
+            if (markerGPS) map.removeLayer(markerGPS);
+            markerGPS = L.marker(e.latlng, { icon: L.divIcon({ className: 'gps-dot', iconSize: [12, 12] }) }).addTo(map);
+        });
+    </script>
+</body>
+</html>
